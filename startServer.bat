@@ -1,25 +1,25 @@
 @echo off
-echo === PaddleOCR-VL-1.5 推理服务启动 ===
+echo === Starting PaddleOCR-VL-1.5 Inference Server ===
 
 if not exist "models\PaddleOCR-VL-1.5.gguf" (
-    echo [错误] 模型文件不存在！请先运行: python scripts\download_model.py
+    echo [ERROR] Model file not found! Please run: python scripts\download_model.py
     pause
     exit /b 1
 )
 
 if not exist "llama-b9158-bin-win-cuda-12.4-x64\llama-server.exe" (
-    echo [错误] llama-server.exe 不存在！
+    echo [ERROR] llama-server.exe not found!
     pause
     exit /b 1
 )
 
 if not exist "models\PaddleOCR-VL-1.5-mmproj.gguf" (
-    echo [错误] mmproj 投影仪文件不存在！
+    echo [ERROR] mmproj file not found!
     pause
     exit /b 1
 )
 
-REM 针对4GB显存优化
+REM Optimized for 4GB VRAM
 set CUDA_VISIBLE_DEVICES=0
 set GGML_CUDA_FORCE_MMQ=1
 
