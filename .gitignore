@@ -1,0 +1,10 @@
+*.gguf
+bak/*
+input/*
+output/*
+logs/*
+models/*
+python-3.11.5-embed-amd64/*
+ocr.zip
+src/__pycache__/*
+llama-b9158-bin-win-cuda-12.4-x64/*
