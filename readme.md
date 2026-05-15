@@ -4,6 +4,15 @@
 3. 有 NVIDIA 显卡 + CUDA
 4. 双击 startServer.bat 启动 OCR 服务 → 双击 run.bat 执行转换
 
+# 使用方法
+- 需要转换的pdf放input目录
+- 先startServer 启动服务
+- 执行run.bat  就把所有的pdf转word，输出到output目录。 
+- 结束后，再执行stopServer，停止服务。关掉多余的cmd窗口就行。
+- src/config.yaml  是配置文件，可以对转换进行配置。比如，可以对转换后的word文档进行纠错。有些固定错误的内容，可以在config.yaml中配置后，重新转换。编辑时注意保持格式。
+
+
+
 ## 目录结构
 
 ```
