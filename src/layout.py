@@ -124,6 +124,105 @@ def page_text_bounds(lines: list[OCRLine], page_w: int) -> TextBounds:
     return TextBounds(left=left, right=right)
 
 
+# ─── 字体大小估算 ────────────────────────────────────────
+
+
+def estimate_font_size(line: OCRLine, page_h: int, base_pt: float = 10.0) -> float:
+    """根据 bbox 高度估算字体大小(pt)。"""
+    bbox_h = line.bbox[3] - line.bbox[1]
+    if bbox_h <= 0 or page_h <= 0:
+        return base_pt
+    # 典型 PDF 300dpi 下，10pt ≈ 36-40px 高度
+    # 以 300dpi 为基准，pt = px * 72 / dpi
+    # 但 OCR 返回的坐标已经是缩放后的像素值，我们用相对比例
+    ratio = bbox_h / page_h
+    # 假设一页 A4 210mm ≈ 2480px @300dpi
+    # 10pt 文字高度约 36px, ratio ≈ 36/2480 ≈ 0.0145
+    estimated_pt = ratio * 2480 * 72 / 300
+    # 限制在合理范围
+    estimated_pt = max(base_pt * 0.6, min(estimated_pt, base_pt * 3.0))
+    # 四舍五入到 0.5pt
+    return round(estimated_pt * 2) / 2
+
+
+def is_large_text(line: OCRLine, page_h: int) -> bool:
+    """判断是否为明显较大的文本（如标题）。"""
+    return estimate_font_size(line, page_h) > 12.0
+
+
+# ─── 对齐方式检测 ────────────────────────────────────────
+
+ALIGN_LEFT = "left"
+ALIGN_CENTER = "center"
+ALIGN_RIGHT = "right"
+
+
+def detect_alignment(
+    line: OCRLine,
+    page_w: int,
+    bounds: TextBounds,
+    lines_on_page: list[OCRLine],
+    page_h: int,
+) -> str:
+    """
+    检测行对齐方式：
+    - 短行且居中 → center
+    - 行靠近右边界 → right
+    - 其余 → left
+    """
+    line_w = line.bbox[2] - line.bbox[0]
+    line_h = line.bbox[3] - line.bbox[1]
+    if line_w <= 0 or line_h <= 0:
+        return ALIGN_LEFT
+
+    page_span = max(bounds.right - bounds.left, 1)
+
+    # 居中检测：短行（宽度 < 页面 40%）且左右边距大致相等
+    left_gap = line.bbox[0] - bounds.left
+    right_gap = bounds.right - line.bbox[2]
+
+    is_short_line = line_w / page_span < 0.40
+    is_near_center = (
+        is_short_line
+        and left_gap > page_span * 0.12
+        and right_gap > page_span * 0.12
+        and abs(left_gap - right_gap) / max(page_span, 1) < 0.15
+    )
+
+    # 右对齐检测：紧贴右边界
+    is_near_right = right_gap < page_span * 0.05 and left_gap > page_span * 0.25
+
+    if is_near_center and is_large_text(line, page_h):
+        return ALIGN_CENTER
+    if is_near_right:
+        return ALIGN_RIGHT
+    if is_short_line and is_near_center:
+        return ALIGN_CENTER
+    return ALIGN_LEFT
+
+
+# ─── 加粗估算 ────────────────────────────────────────────
+
+
+def estimate_is_bold(line: OCRLine, page_w: int) -> bool:
+    """根据字符宽度与 bbox 宽度的比值估算是否加粗。"""
+    text = line.text.strip()
+    if not text:
+        return False
+    bbox_w = line.bbox[2] - line.bbox[0]
+    if bbox_w <= 0:
+        return False
+    # 粗略：字符数 * 平均字宽 vs bbox 宽度
+    # 正常文本：每个字约占 bbox 宽度的 1/字符数
+    # 加粗文本：每个字占更宽空间
+    avg_char_width = bbox_w / len(text)
+    page_ratio = bbox_w / max(page_w, 1)
+    # 如果平均字符宽度 > 页面宽度 * 0.06，认为可能是加粗（经验值）
+    return avg_char_width / max(page_w, 1) > 0.055
+
+
+# ─── 原有函数 ────────────────────────────────────────────
+
 def indent_for_line(line: OCRLine, bounds: TextBounds, usable_w_cm: float) -> float:
     span = max(bounds.right - bounds.left, 1)
     ratio = (line.bbox[0] - bounds.left) / span

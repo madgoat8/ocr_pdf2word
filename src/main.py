@@ -3,10 +3,13 @@ import logging
 import time
 from pathlib import Path
 
+import fitz
+
 from src import PageResult
 from src.config import load_config
 from src.pdf_loader import pdf_to_images, should_skip_page
 from src.ocr_engine import OcrEngine
+from src.table_detector import detect_tables
 from src.word_writer import write_to_word
 
 Path("logs").mkdir(exist_ok=True)
@@ -58,9 +61,14 @@ def main():
     images = pdf_to_images(pdf_path, dpi=args.dpi)
     log.info(f"  -> {len(images)} 页")
 
-    log.info("Step 2/3: VL-OCR 识别")
+    log.info("Step 2/3: VL-OCR 识别 + 表格检测")
     ocr = OcrEngine(config)
+
+    # 打开 PDF 文档用于表格检测
+    pdf_doc = fitz.open(str(pdf_path))
+
     page_results: list[PageResult] = []
+    total_raw_lines = 0
     for page_num, img in images:
         if should_skip_page(img):
             log.info(f"  Page {page_num}: 跳过 (空白页)")
@@ -72,14 +80,36 @@ def main():
         pr = ocr.process_page(img, page_num)
         elapsed = time.time() - t0
         n = len(pr.lines)
+        total_raw_lines += n
         log.info(f"  Page {page_num}: {n} 行文字, {elapsed:.1f}s")
+
+        # 表格检测
+        table_cfg = config.get("table", {})
+        if table_cfg.get("enabled", True) and page_num <= pdf_doc.page_count:
+            pdf_page = pdf_doc[page_num - 1]
+            tables = detect_tables(
+                page=pdf_page,
+                ocr_lines=pr.lines,
+                page_w=pr.width,
+                page_h=pr.height,
+                page_num=page_num,
+                prefer_pymupdf=table_cfg.get("prefer_pymupdf", True),
+            )
+            if tables:
+                log.info(
+                    "    -> 检测到 %d 个表格", len(tables),
+                )
+                pr.tables = tables
+
         page_results.append(pr)
+
+    pdf_doc.close()
 
     log.info("Step 3/3: 生成 Word")
     out = write_to_word(page_results, output_path, font_cfg=config.get("font", {}))
     total = time.time() - total_start
     log.info(f"完成: {out}")
-    log.info(f"总耗时: {total:.1f}s")
+    log.info(f"总行数: {total_raw_lines} | 总耗时: {total:.1f}s")
     log.info("=" * 50)
 
 

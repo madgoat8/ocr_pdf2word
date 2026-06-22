@@ -1,9 +1,9 @@
 api:
   base_url: "http://127.0.0.1:8000/v1"
   api_key: "myKey123"
-  model_name: "PaddleOCR-VL-1.5"
+  model_name: "PaddleOCR-VL-1.6"
   prompt: "Spotting:"
-  max_tokens: 8192
+  max_tokens: 3072
 
 ocr:
   loc_grid_size: 1000
@@ -18,10 +18,21 @@ ocr:
   brace_max_width_ratio: 0.12
   brace_min_aspect: 2.4
 
+# 表格检测
+table:
+  enabled: true
+  prefer_pymupdf: true  # 优先使用 PyMuPDF 原生检测，降级到空间分析
+
 font:
   latin: "Times New Roman"
   east_asian: "宋体"
   size: 10
+  # 自动根据 bbox 高度估算字体大小（启用后 size 作为基准值）
+  auto_size: true
+  # 自动检测对齐方式（居中/右对齐）
+  auto_align: true
+  # 自动检测加粗文本
+  auto_bold: true
 
 correction:
   "D4/T": "DL/T"

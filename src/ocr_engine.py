@@ -51,8 +51,9 @@ class OcrEngine:
         result = PageResult(page_num=page_num, width=w, height=h)
 
         request_img = preprocess_image(img, self._ocr_cfg)
-        lines_data = self._process_with_retry(request_img)
+        lines_data = self._process_with_retry(request_img, page_num)
         if not lines_data:
+            log.warning("  Page %d: OCR 结果为空（模型未识别到文本）", page_num)
             return result
 
         loc_grid_size = float(self._ocr_cfg.get("loc_grid_size", DEFAULT_LOC_GRID_SIZE))
@@ -93,24 +94,44 @@ class OcrEngine:
 
         result.lines.extend(detect_large_braces(request_img, result.lines, self._ocr_cfg))
         result.lines = sort_lines(result.lines, w)
+
+        raw_line_count = len(lines_data)
+        final_line_count = len(result.lines)
+        if raw_line_count != final_line_count:
+            log.info(
+                "  Page %d: 原始 %d 行 → 排序/花括号处理后 %d 行",
+                page_num, raw_line_count, final_line_count,
+            )
         return result
 
-    def _process_with_retry(self, img) -> list:
+    def _process_with_retry(self, img, page_num: int) -> list:
         max_attempts = 1
         if self._ocr_cfg.get("retry_abnormal", False):
             max_attempts += max(0, int(self._ocr_cfg.get("max_retries", 1)))
 
         last_lines = []
         last_error = None
-        for _ in range(max_attempts):
+        for attempt in range(max_attempts):
             try:
                 text = self._client.process_image(img)
             except Exception as exc:
+                log.warning("  Page %d: 第 %d 次请求失败: %s", page_num, attempt + 1, exc)
                 last_error = exc
+                continue
+            if not text.strip():
+                log.warning("  Page %d: 第 %d 次请求返回空内容", page_num, attempt + 1)
                 continue
             last_lines = parse_spotting(text)
             if last_lines:
+                if attempt > 0:
+                    log.info("  Page %d: 第 %d 次重试成功", page_num, attempt + 1)
                 return last_lines
+            log.warning(
+                "  Page %d: 第 %d 次请求 parse_spotting 结果为空（API 返回长度=%d 字符）",
+                page_num, attempt + 1, len(text),
+            )
         if last_error is not None:
+            log.error("  Page %d: 所有重试均失败，抛出异常", page_num)
             raise last_error
+        log.warning("  Page %d: 所有重试后仍无有效识别结果", page_num)
         return last_lines
